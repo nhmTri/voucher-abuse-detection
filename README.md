@@ -4,6 +4,8 @@
 ![SQL](https://img.shields.io/badge/SQL-pair%20level-2456D6?style=flat-square&logo=postgresql&logoColor=white)
 ![Power BI](https://img.shields.io/badge/Power%20BI-analysis-C2703A?style=flat-square&logo=powerbi&logoColor=white)
 ![Runnable](https://img.shields.io/badge/runs-out%20of%20the%20box-1F7A5A?style=flat-square)
+[![rules](https://github.com/nhmTri/voucher-abuse-detection/actions/workflows/sql-tests.yml/badge.svg)](https://github.com/nhmTri/voucher-abuse-detection/actions/workflows/sql-tests.yml)
+![Licence](https://img.shields.io/badge/licence-MIT-8892A6?style=flat-square)
 
 <img src="assets/fraud-ring.svg" alt="A closed ring of three buyers and three sellers" width="100%">
 
@@ -44,19 +46,21 @@ Every threshold is a parameter. `rules/pair_frequency.sql` is the detection quer
 ## Run it
 
 ```bash
-psql -f data/sample/00_sample_data.sql   # synthetic ring + legitimate repeat buyers
-psql -f rules/pair_frequency.sql
+make run     # load the synthetic ring plus legitimate repeat buyers, run the rule
+make test    # assert it flags all 9 ring pairs and none of the legitimate ones
 ```
 
-Output on the sample: the 3×3 ring is flagged `REVIEW`, the two legitimate repeat customers are not.
+CI runs that assertion against PostgreSQL 16 on every push. **The test that matters is the second one** — a rule that catches fraud is easy, a rule that catches fraud without touching real customers is the job.
+
+Full parameter table and escalation policy: [`docs/rule-spec.md`](docs/rule-spec.md). Data provenance: [`data/README.md`](data/README.md).
 
 ## Repo map
 
 ```
-rules/         detection SQL, one file per signal
-notebooks/     exploration and the false-positive analysis
-docs/          rule specification handed to the control team
-data/sample/   synthetic transactions - no client data
+rules/            detection SQL
+tests/            the assertion CI runs on every push
+docs/rule-spec.md parameters, escalation policy and known limits
+data/sample/      synthetic transactions - no client data
 ```
 
 ---
