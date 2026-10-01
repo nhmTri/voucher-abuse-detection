@@ -5,9 +5,17 @@
 ![Power BI](https://img.shields.io/badge/Power%20BI-analysis-C2703A?style=flat-square&logo=powerbi&logoColor=white)
 ![Runnable](https://img.shields.io/badge/runs-out%20of%20the%20box-1F7A5A?style=flat-square)
 [![rules](https://github.com/nhmTri/voucher-abuse-detection/actions/workflows/sql-tests.yml/badge.svg)](https://github.com/nhmTri/voucher-abuse-detection/actions/workflows/sql-tests.yml)
+[![live demo](https://img.shields.io/badge/live%20demo-move%20the%20thresholds-184F95?style=flat-square&logo=githubpages&logoColor=white)](https://nhmtri.github.io/voucher-abuse-detection/)
 ![Licence](https://img.shields.io/badge/licence-MIT-8892A6?style=flat-square)
 
 <img src="assets/fraud-ring.svg" alt="A closed ring of three buyers and three sellers" width="100%">
+
+> ### ▶ [Move the thresholds yourself](https://nhmtri.github.io/voucher-abuse-detection/)
+>
+> Nine abuse pairs are planted in the data, next to regulars, promo sign-ups, wholesale
+> buyers and small resellers who all look suspicious in one way or another. Loosen a
+> threshold and the page tells you what it cost you: **precision, recall, and exactly which
+> ordinary customers you just swept in**. Nothing to install.
 
 Pair-level network analysis on marketplace campaign transactions. Promotion budget was leaking, and totals looked normal — because **abuse hides in relationships, not in totals**.
 
@@ -50,6 +58,8 @@ make run     # load the synthetic ring plus legitimate repeat buyers, run the ru
 make test    # assert it flags all 9 ring pairs and none of the legitimate ones
 ```
 
+Or skip the install and [open the demo](https://nhmtri.github.io/voucher-abuse-detection/) — same rule, same planted ring, four sliders.
+
 CI runs that assertion against PostgreSQL 16 on every push. **The test that matters is the second one** — a rule that catches fraud is easy, a rule that catches fraud without touching real customers is the job.
 
 Full parameter table and escalation policy: [`docs/rule-spec.md`](docs/rule-spec.md). Data provenance: [`data/README.md`](data/README.md).
@@ -57,6 +67,7 @@ Full parameter table and escalation policy: [`docs/rule-spec.md`](docs/rule-spec
 ## Repo map
 
 ```
+docs/index.html   the interactive demo, served by GitHub Pages
 rules/            detection SQL
 tests/            the assertion CI runs on every push
 docs/rule-spec.md parameters, escalation policy and known limits

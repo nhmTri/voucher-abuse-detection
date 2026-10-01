@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voucher abuse detection — live demo</title>
+<meta name="description" content="Move the rule thresholds and watch the ring light up, with precision and recall scored against the planted ground truth. Synthetic data, real rule.">
+<style>
+  :root{
+    color-scheme: light;
+    --surface:#fcfcfb; --plane:#f4f4f1; --card:#ffffff;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#6f6d68;
+    --grid:#e1e0d9; --line:#c3c2b7; --ring:rgba(11,11,11,.10);
+    --flag:#b02e2d;      /* flagged pair      */
+    --flag-soft:#e8736f; /* flagged, weaker   */
+    --ok:#184f95;        /* legitimate        */
+    --ok-soft:#5598e7;
+    --neutral:#898781;
+    --accent:#184f95;
+    --code:#f7f7f4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --surface:#1a1a19; --plane:#0d0d0d; --card:#1f1f1e;
+      --ink:#ffffff; --ink-2:#c3c2b7; --muted:#9a9890;
+      --grid:#2c2c2a; --line:#383835; --ring:rgba(255,255,255,.12);
+      --flag:#d4423f; --flag-soft:#f0968f;
+      --ok:#2a78d6;   --ok-soft:#86b6ef;
+      --neutral:#9a9890; --accent:#5598e7; --code:#141413;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --surface:#1a1a19; --plane:#0d0d0d; --card:#1f1f1e;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#9a9890;
+    --grid:#2c2c2a; --line:#383835; --ring:rgba(255,255,255,.12);
+    --flag:#d4423f; --flag-soft:#f0968f;
+    --ok:#2a78d6;   --ok-soft:#86b6ef;
+    --neutral:#9a9890; --accent:#5598e7; --code:#141413;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--plane);color:var(--ink);
+       font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1140px;margin:0 auto;padding:32px 16px 64px}
+
+  header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between}
+  h1{font-size:23px;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em}
+  .lede{color:var(--ink-2);margin:0;max-width:60ch}
+  .head-right{display:flex;gap:10px;align-items:center}
+  .homelink{font-size:13px;color:var(--accent);text-decoration:none;white-space:nowrap;
+            border-bottom:1px solid transparent}
+  .homelink:hover{border-bottom-color:currentColor}
+  .tgl{font:inherit;font-size:12px;color:var(--ink-2);background:var(--card);
+       border:1px solid var(--ring);border-radius:7px;padding:6px 11px;cursor:pointer}
+  .tgl:hover{color:var(--ink)}
+
+  .hero{display:flex;flex-wrap:wrap;gap:28px;margin:26px 0 22px;padding:18px 20px;
+        background:var(--card);border:1px solid var(--ring);border-radius:12px}
+  .stat .v{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.05}
+  .stat .v small{font-size:15px;font-weight:600;color:var(--ink-2)}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;margin-top:5px}
+  .stat.bad .v{color:var(--flag)}
+  .stat.good .v{color:var(--ok)}
+
+  .filters{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end;padding:16px 20px;
+           background:var(--card);border:1px solid var(--ring);border-radius:12px;margin-bottom:22px}
+  .f{display:flex;flex-direction:column;gap:7px;min-width:188px}
+  .f label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em}
+  .f .row{display:flex;align-items:center;gap:11px}
+  .f output{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;min-width:4.6em}
+  input[type=range]{accent-color:var(--accent);width:122px}
+  .chk{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);cursor:pointer;
+       padding-bottom:5px}
+  .chk input{accent-color:var(--accent);width:16px;height:16px}
+  .reset{font:inherit;font-size:12px;padding:7px 13px;border-radius:7px;cursor:pointer;
+         background:transparent;color:var(--ink-2);border:1px solid var(--ring)}
+  .reset:hover{color:var(--ink)}
+
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+  @media (max-width:880px){.cols{grid-template-columns:minmax(0,1fr)}}
+  .card{background:var(--card);border:1px solid var(--ring);border-radius:12px;padding:18px 20px 20px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+           margin:0 0 4px;font-weight:600}
+  .card .cap{font-size:12.5px;color:var(--ink-2);margin:0 0 14px}
+
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .ed{transition:stroke .25s ease,stroke-opacity .25s ease,stroke-width .25s ease}
+  .nd{transition:fill .25s ease,r .25s ease}
+  .nlab{font:600 9px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#fff;pointer-events:none}
+
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:12px;color:var(--ink-2)}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+  .swl{display:inline-block;width:16px;height:3px;border-radius:2px;flex:none}
+
+  .mrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+        padding:10px 0;border-top:1px solid var(--grid);font-size:13px}
+  .mrow:first-of-type{border-top:0}
+  .mrow .k{color:var(--ink-2)}
+  .mrow .v{font-weight:700;font-variant-numeric:tabular-nums}
+  .mrow .v.bad{color:var(--flag)} .mrow .v.good{color:var(--ok)}
+
+  .pairs{margin-top:16px;font-size:12px}
+  .pairs .h{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+            margin-bottom:8px;font-weight:600}
+  .pr{display:flex;justify-content:space-between;gap:8px;padding:5px 0;
+      font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .pr b{font-weight:600;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pr .tp{color:var(--flag);font-weight:600}
+  .pr .fp{color:var(--muted)}
+
+  pre{background:var(--code);border:1px solid var(--ring);border-radius:10px;padding:15px 17px;
+      overflow:auto;margin:0;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2)}
+  pre .kw{color:var(--accent);font-weight:600}
+  pre .num{color:var(--flag);font-weight:600}
+  pre .cm{color:var(--muted);font-style:italic}
+  .sqlhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:14px}
+  .copy{font:inherit;font-size:11.5px;padding:5px 11px;border-radius:7px;cursor:pointer;
+        background:transparent;color:var(--ink-2);border:1px solid var(--ring)}
+  .copy:hover{color:var(--ink)}
+
+  .tip{position:fixed;pointer-events:none;opacity:0;transition:opacity .12s;background:var(--card);
+       border:1px solid var(--ring);border-radius:9px;padding:9px 12px;font-size:12.5px;line-height:1.5;
+       z-index:9;box-shadow:0 6px 22px rgba(0,0,0,.14);max-width:250px}
+  .tip b{display:block;margin-bottom:3px}
+  .tip i{font-style:normal;color:var(--muted)}
+
+  .note{margin-top:22px;font-size:12.5px;color:var(--muted);max-width:78ch}
+  footer{margin-top:34px;padding-top:18px;border-top:1px solid var(--grid);font-size:12.5px;
+         color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 18px}
+  footer a{color:var(--accent);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>A voucher ring, and the four thresholds that decide whether you see it</h1>
+      <p class="lede">Nine of these pairs were planted. Move the rule and the score tells you how many you
+         caught and how many ordinary customers you dragged in with them.</p>
+    </div>
+    <div class="head-right">
+      <a class="homelink" href="https://github.com/nhmTri/voucher-abuse-detection">repository ↗</a>
+      <button class="tgl" id="theme" type="button">dark</button>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="stat bad"><div class="v" id="hFlag">—</div><div class="k">pairs flagged</div></div>
+    <div class="stat"><div class="v" id="hCaught">—</div><div class="k">of 9 ring pairs caught</div></div>
+    <div class="stat good"><div class="v" id="hPrec">—</div><div class="k">precision</div></div>
+    <div class="stat"><div class="v" id="hFp">—</div><div class="k">ordinary pairs swept in</div></div>
+  </div>
+
+  <div class="filters">
+    <div class="f">
+      <label for="minTx">Orders between the same two accounts ≥</label>
+      <div class="row"><input type="range" id="minTx" min="2" max="12" step="1" value="6"><output id="minTxv">6</output></div>
+    </div>
+    <div class="f">
+      <label for="maxVal">…each order worth at most</label>
+      <div class="row"><input type="range" id="maxVal" min="0" max="8" step="1" value="1"><output id="maxValv">—</output></div>
+    </div>
+    <div class="f">
+      <label for="maxAge">…both accounts younger than</label>
+      <div class="row"><input type="range" id="maxAge" min="7" max="364" step="7" value="28"><output id="maxAgev">28d</output></div>
+    </div>
+    <label class="chk" for="oneWay"><input type="checkbox" id="oneWay" checked> require one-sided flow</label>
+    <button class="reset" id="reset" type="button">reset</button>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>The network</h2>
+      <p class="cap">Every dot is an account, every line a pair that trades often enough to be a candidate.
+         Red means the rule fired on it.</p>
+      <svg id="net" viewBox="0 0 640 470" role="img"
+           aria-label="A network of marketplace accounts. A closed group of six accounts in the centre is flagged in red; ordinary accounts around the edge stay grey."></svg>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--flag)"></i> flagged account</span>
+        <span><i class="sw" style="background:var(--neutral)"></i> ordinary account</span>
+        <span><i class="swl" style="background:var(--flag)"></i> pair the rule fired on</span>
+        <span><i class="swl" style="background:var(--line)"></i> candidate pair, not flagged</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Scored against the planted truth</h2>
+      <p class="cap">The generator knows which pairs are the ring, so the rule can be marked rather than admired.</p>
+      <div class="mrow"><span class="k">Ring pairs caught</span><span class="v bad" id="mTp">—</span></div>
+      <div class="mrow"><span class="k">Ring pairs missed</span><span class="v" id="mFn">—</span></div>
+      <div class="mrow"><span class="k">Ordinary pairs flagged</span><span class="v" id="mFp">—</span></div>
+      <div class="mrow"><span class="k">Precision</span><span class="v good" id="mPrec">—</span></div>
+      <div class="mrow"><span class="k">Recall</span><span class="v good" id="mRec">—</span></div>
+      <div class="pairs">
+        <div class="h">What the rule returned</div>
+        <div id="plist"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:22px">
+    <div class="sqlhead">
+      <div>
+        <h2>The rule these controls are writing</h2>
+        <p class="cap" style="margin:0">Same shape as <code>rules/pair_frequency.sql</code>; the CI job runs it on every push.</p>
+      </div>
+      <button class="copy" id="copy" type="button">copy</button>
+    </div>
+    <pre id="sql"></pre>
+  </div>
+
+  <p class="note">Every account, order and timestamp on this page is generated in your browser from a fixed
+     seed. Nothing here comes from a real marketplace, and no data leaves the page. The planted ring exists
+     so the rule can be scored — a detection rule with no ground truth to answer to is just an opinion.</p>
+
+  <footer>
+    <span>Nguyen Hoang Minh Tri</span>
+    <a href="https://github.com/nhmTri/voucher-abuse-detection">source</a>
+    <a href="https://github.com/nhmTri">github.com/nhmTri</a>
+  </footer>
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var VALS = [1, 1000, 5000, 20000, 50000, 120000, 300000, 600000, 2000000];
+  var fmt = new Intl.NumberFormat('en-US');
+  function vnd(x){ return fmt.format(Math.round(x)) + ' ₫'; }
+
+  function rng(seed){ var s = seed >>> 0;
+    return function(){ s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+  // ------------------------------------------------------------ the population
+  // Built once. Four kinds of pair, so the rule has something to get wrong:
+  //   ring      - the planted abuse: many orders, floor price, new accounts, one way
+  //   loyal     - a real regular: many orders, normal price, old accounts, one way
+  //   promo     - new cheap accounts, but only a couple of orders
+  //   ordinary  - everything else
+  function makeWorld(){
+    var r = rng(20260414);
+    var accounts = [], pairs = [];
+    function acct(id, kind, ageDays, sells){
+      accounts.push({ id:id, kind:kind, age:ageDays, sells:sells });
+      return accounts.length - 1;
+    }
+
+    // the ring: three buyers, three sellers, all opened the same week
+    var B = [], S = [];
+    for (var i = 0; i < 3; i++) B.push(acct('B' + (i+1), 'ring', 3 + i * 2, false));
+    for (var j = 0; j < 3; j++) S.push(acct('S' + (j+1), 'ring', 2 + j * 2, true));
+    for (i = 0; i < 3; i++) for (j = 0; j < 3; j++){
+      pairs.push({ a:B[i], b:S[j], n:8, unit:1, oneWay:true, truth:true });
+    }
+
+    // six genuine regulars: high frequency, real prices, old accounts
+    for (i = 0; i < 6; i++){
+      var lb = acct('L' + (i+1), 'loyal', 240 + Math.floor(r() * 900), false);
+      var ls = acct('M' + (i+1), 'loyal', 400 + Math.floor(r() * 900), true);
+      pairs.push({ a:lb, b:ls, n:7 + Math.floor(r() * 5),
+                   unit:160000 + Math.round(r() * 440000), oneWay:true, truth:false });
+    }
+
+    // eight promo-chasers: brand-new, cheap, but they barely transact
+    for (i = 0; i < 8; i++){
+      var pb = acct('P' + (i+1), 'promo', 2 + Math.floor(r() * 22), false);
+      var ps = acct('Q' + (i+1), 'promo', 30 + Math.floor(r() * 300), true);
+      pairs.push({ a:pb, b:ps, n:2 + Math.floor(r() * 3),
+                   unit:1 + Math.round(r() * 9000), oneWay:true, truth:false });
+    }
+
+    // three established wholesale buyers: cheap and frequent, but years old.
+    // they are what the account-age filter exists to keep out.
+    for (i = 0; i < 3; i++){
+      var wb = acct('W' + (i+1), 'bulk', 180 + Math.floor(r() * 90), false);
+      var ws = acct('X' + (i+1), 'bulk', 210 + Math.floor(r() * 110), true);
+      pairs.push({ a:wb, b:ws, n:8 + Math.floor(r() * 3),
+                   unit:600 + Math.round(r() * 360), oneWay:true, truth:false });
+    }
+
+    // two small resellers: new, cheap, frequent - but they trade in both
+    // directions, which is what the one-sided-flow test is for.
+    for (i = 0; i < 2; i++){
+      var rb = acct('R' + (i+1), 'reseller', 9 + Math.floor(r() * 14), true);
+      var rs = acct('T' + (i+1), 'reseller', 6 + Math.floor(r() * 16), true);
+      pairs.push({ a:rb, b:rs, n:7 + Math.floor(r() * 4),
+                   unit:400 + Math.round(r() * 460), oneWay:false, truth:false });
+    }
+
+    // the ordinary mass
+    for (i = 0; i < 46; i++){
+      var ob = acct('u' + (i+1), 'ordinary', 20 + Math.floor(r() * 1100), r() < .25);
+      var os = acct('v' + (i+1), 'ordinary', 60 + Math.floor(r() * 1400), true);
+      pairs.push({ a:ob, b:os, n:1 + Math.floor(r() * 4),
+                   unit:40000 + Math.round(r() * 900000),
+                   oneWay: !accounts[ob].sells, truth:false });
+    }
+    return { accounts:accounts, pairs:pairs };
+  }
+  var W = makeWorld();
+
+  // deterministic layout: the ring sits in the middle, everything else orbits it
+  (function layout(){
+    var CX = 318, CY = 228;
+    var ringIdx = [], other = [];
+    W.accounts.forEach(function(a, i){ (a.kind === 'ring' ? ringIdx : other).push(i); });
+    ringIdx.forEach(function(idx, k){
+      var ang = -Math.PI / 2 + k * Math.PI * 2 / ringIdx.length;
+      W.accounts[idx].x = CX + 62 * Math.cos(ang);
+      W.accounts[idx].y = CY + 62 * Math.sin(ang);
+    });
+    var GA = Math.PI * (3 - Math.sqrt(5));
+    other.forEach(function(idx, k){
+      var t = (k + 0.5) / other.length;
+      var rad = 118 + Math.sqrt(t) * 108;
+      var ang = k * GA;
+      W.accounts[idx].x = CX + rad * Math.cos(ang) * 1.32;
+      W.accounts[idx].y = CY + rad * Math.sin(ang) * 0.92;
+    });
+  })();
+
+  // ------------------------------------------------------------------ the rule
+  function evaluate(){
+    var minTx = +$('minTx').value;
+    var maxVal = VALS[+$('maxVal').value];
+    var maxAge = +$('maxAge').value;
+    var oneWay = $('oneWay').checked;
+
+    var flagged = [], tp = 0, fp = 0, fn = 0;
+    W.pairs.forEach(function(p){
+      var A = W.accounts[p.a], B = W.accounts[p.b];
+      var hit = p.n >= minTx && p.unit <= maxVal &&
+                A.age < maxAge && B.age < maxAge &&
+                (!oneWay || p.oneWay);
+      p.hit = hit;
+      if (hit){ flagged.push(p); if (p.truth) tp++; else fp++; }
+      else if (p.truth) fn++;
+    });
+    var prec = flagged.length ? tp / flagged.length : null;
+    var rec  = 9 ? tp / 9 : null;
+    return { minTx:minTx, maxVal:maxVal, maxAge:maxAge, oneWay:oneWay,
+             flagged:flagged, tp:tp, fp:fp, fn:fn, prec:prec, rec:rec };
+  }
+
+  // -------------------------------------------------------------------- drawing
+  var net = $('net'), tip = $('tip');
+
+  function draw(st){
+    while (net.firstChild) net.removeChild(net.firstChild);
+    var candMin = Math.min(st.minTx, 5);
+
+    // edges first, so nodes sit on top
+    W.pairs.forEach(function(p){
+      if (p.n < candMin && !p.hit) return;
+      var A = W.accounts[p.a], B = W.accounts[p.b];
+      var e = document.createElementNS(SVGNS, 'line');
+      e.setAttribute('class', 'ed');
+      e.setAttribute('x1', A.x.toFixed(1)); e.setAttribute('y1', A.y.toFixed(1));
+      e.setAttribute('x2', B.x.toFixed(1)); e.setAttribute('y2', B.y.toFixed(1));
+      e.setAttribute('stroke', p.hit ? 'var(--flag)' : 'var(--line)');
+      e.setAttribute('stroke-width', p.hit ? 2.2 : 1);
+      e.setAttribute('stroke-opacity', p.hit ? .95 : .5);
+      e.setAttribute('stroke-linecap', 'round');
+      net.appendChild(e);
+    });
+
+    var flaggedAcct = {};
+    st.flagged.forEach(function(p){ flaggedAcct[p.a] = 1; flaggedAcct[p.b] = 1; });
+
+    W.accounts.forEach(function(a, i){
+      var on = !!flaggedAcct[i];
+      var g = document.createElementNS(SVGNS, 'g');
+      var c = document.createElementNS(SVGNS, 'circle');
+      c.setAttribute('class', 'nd');
+      c.setAttribute('cx', a.x.toFixed(1)); c.setAttribute('cy', a.y.toFixed(1));
+      c.setAttribute('r', on ? 13 : (a.kind === 'ring' ? 11 : 6));
+      c.setAttribute('fill', on ? 'var(--flag)' : 'var(--neutral)');
+      c.setAttribute('fill-opacity', on ? .95 : .42);
+      g.appendChild(c);
+
+      if (on || a.kind === 'ring'){
+        var t = document.createElementNS(SVGNS, 'text');
+        t.setAttribute('class', 'nlab');
+        t.setAttribute('x', a.x.toFixed(1)); t.setAttribute('y', (a.y + 3.2).toFixed(1));
+        t.setAttribute('text-anchor', 'middle');
+        t.textContent = a.id;
+        g.appendChild(t);
+      }
+
+      (function(acc, isOn){
+        g.addEventListener('mouseenter', function(e){
+          var kindText = { ring:'planted ring member', loyal:'long-standing regular',
+                           promo:'promo sign-up', bulk:'established wholesale account',
+                           reseller:'small reseller, trades both ways',
+                           ordinary:'ordinary account' }[acc.kind];
+          tip.innerHTML = '<b>' + acc.id + '</b><i>' + kindText + '</i><br>' +
+            'account age ' + acc.age + ' days<br>' +
+            (isOn ? 'flagged by the current rule' : 'not flagged');
+          tip.style.opacity = 1; move(e);
+        });
+        g.addEventListener('mousemove', move);
+        g.addEventListener('mouseleave', function(){ tip.style.opacity = 0; });
+      })(a, on);
+
+      net.appendChild(g);
+    });
+  }
+
+  function move(e){
+    var pad = 16, w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+    if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+
+  function drawMetrics(st){
+    $('hFlag').textContent = st.flagged.length;
+    $('hCaught').innerHTML = st.tp + ' <small>of 9</small>';
+    $('hPrec').textContent = st.prec === null ? '—' : Math.round(st.prec * 100) + '%';
+    $('hFp').textContent = st.fp;
+
+    $('mTp').textContent = st.tp;
+    $('mFn').textContent = st.fn;
+    $('mFp').textContent = st.fp;
+    $('mPrec').textContent = st.prec === null ? '—' : (st.prec * 100).toFixed(0) + '%';
+    $('mRec').textContent  = (st.rec * 100).toFixed(0) + '%';
+
+    var pl = $('plist'); pl.innerHTML = '';
+    if (!st.flagged.length){
+      pl.innerHTML = '<div class="pr"><span class="fp">nothing clears the rule at these settings</span></div>';
+      return;
+    }
+    st.flagged.slice(0, 11).forEach(function(p){
+      var A = W.accounts[p.a], B = W.accounts[p.b];
+      var d = document.createElement('div');
+      d.className = 'pr';
+      d.innerHTML = '<b>' + A.id + ' → ' + B.id + '</b>' +
+        '<span>' + p.n + ' × ' + vnd(p.unit) + '</span>' +
+        '<span class="' + (p.truth ? 'tp' : 'fp') + '">' + (p.truth ? 'ring' : 'ordinary') + '</span>';
+      pl.appendChild(d);
+    });
+    if (st.flagged.length > 11){
+      var more = document.createElement('div');
+      more.className = 'pr';
+      more.innerHTML = '<span class="fp">+ ' + (st.flagged.length - 11) + ' more</span>';
+      pl.appendChild(more);
+    }
+  }
+
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function drawSql(st){
+    var raw =
+'-- a ring is not a big number, it is a shape: score the PAIR, not the order\n' +
+'with pair_stats as (\n' +
+'  select buyer_id, seller_id,\n' +
+'         count(*)                       as orders,\n' +
+'         max(unit_value)                as dearest_order,\n' +
+'         max(buyer_age_days)            as buyer_age,\n' +
+'         max(seller_age_days)           as seller_age,\n' +
+'         bool_or(reverse_direction)     as trades_both_ways\n' +
+'  from   campaign_orders\n' +
+'  group  by buyer_id, seller_id\n' +
+')\n' +
+'select buyer_id, seller_id, orders, dearest_order\n' +
+'from   pair_stats\n' +
+'where  orders        >= ' + st.minTx + '\n' +
+'  and  dearest_order <= ' + st.maxVal + '\n' +
+'  and  buyer_age     <  ' + st.maxAge + '\n' +
+'  and  seller_age    <  ' + st.maxAge + '\n' +
+(st.oneWay ? '  and  not trades_both_ways\n' : '') +
+'order  by orders desc, dearest_order;';
+
+    var html = esc(raw)
+      .replace(/^(--.*)$/gm, '<span class="cm">$1</span>')
+      .replace(/\b(with|as|select|from|where|group|order|by|count|max|bool_or|and|not|desc)\b/g,
+               '<span class="kw">$1</span>')
+      .replace(/(?<![\w_])(\d+)(?![\w%])/g, '<span class="num">$1</span>');
+    $('sql').innerHTML = html;
+    $('sql').dataset.raw = raw;
+  }
+
+  function render(){
+    $('minTxv').value = $('minTx').value;
+    $('maxValv').value = vnd(VALS[+$('maxVal').value]);
+    $('maxAgev').value = $('maxAge').value + 'd';
+    var st = evaluate();
+    draw(st); drawMetrics(st); drawSql(st);
+  }
+
+  ['minTx','maxVal','maxAge','oneWay'].forEach(function(id){
+    $(id).addEventListener('input', render);
+  });
+  $('reset').addEventListener('click', function(){
+    $('minTx').value = 6; $('maxVal').value = 1; $("maxAge").value = 28;
+    $('oneWay').checked = true; render();
+  });
+  $('copy').addEventListener('click', function(){
+    var btn = this, raw = $('sql').dataset.raw || '';
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(raw).then(function(){
+        btn.textContent = 'copied'; setTimeout(function(){ btn.textContent = 'copy'; }, 1400);
+      }, function(){ btn.textContent = 'select it manually'; });
+    } else { btn.textContent = 'select it manually'; }
+  });
+
+  var tgl = $('theme');
+  function applyTheme(t){
+    if (t) document.documentElement.setAttribute('data-theme', t);
+    else   document.documentElement.removeAttribute('data-theme');
+    var darkNow = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
+    tgl.textContent = darkNow ? 'light' : 'dark';
+  }
+  tgl.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var darkNow = cur === 'dark' || (!cur && matchMedia('(prefers-color-scheme: dark)').matches);
+    var next = darkNow ? 'light' : 'dark';
+    applyTheme(next);
+    try { localStorage.setItem('vad-theme', next); } catch (e) {}
+  });
+  try { applyTheme(localStorage.getItem('vad-theme')); } catch (e) { applyTheme(null); }
+
+  render();
+})();
+</script>
+</body>
+</html>
