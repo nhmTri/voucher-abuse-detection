@@ -1,10 +1,15 @@
 -- Minimal synthetic schema so rules/pair_frequency.sql runs out of the box. No real data.
-CREATE TABLE IF NOT EXISTS accounts (
+-- Re-runnable on purpose: a reviewer who runs `make test` twice should not
+-- meet a duplicate-key error on the second go.
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS campaign_transactions, accounts CASCADE;
+
+CREATE TABLE accounts (
     account_id  BIGINT PRIMARY KEY,
     created_at  TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS campaign_transactions (
+CREATE TABLE campaign_transactions (
     txn_id          BIGSERIAL PRIMARY KEY,
     buyer_id        BIGINT  NOT NULL,
     seller_id       BIGINT  NOT NULL,
